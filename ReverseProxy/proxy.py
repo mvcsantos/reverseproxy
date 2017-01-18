@@ -64,6 +64,8 @@ class ReverseProxyServer:
 
     # Threaded request processing
     # Process the request's from the queue
+    # Process the request in a different thread while the main thread is waiting
+    # for new requests
     def process_requests(self):
         response = b'No data to return'
         while True:
