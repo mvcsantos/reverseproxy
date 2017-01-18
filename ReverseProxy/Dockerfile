@@ -1,0 +1,15 @@
+FROM python:3.6-alpine
+
+ENV LANG C.UTF-8
+
+USER root
+
+ENV INSTALL_FOLDER=/opt/proxy
+
+RUN mkdir -p $INSTALL_FOLDER
+WORKDIR $INSTALL_FOLDER
+
+COPY main.py $INSTALL_FOLDER/
+COPY proxy.py $INSTALL_FOLDER/
+
+CMD [ "python", "/opt/proxy/main.py"]

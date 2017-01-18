@@ -1,14 +1,13 @@
 import socket
 import threading
 import select
+import time
+
 from queue import Queue
-
-
 
 # Notes: python 3.6 socket seems to be synchronous
 # so there is a need to implement multithreading to improve performance
 # and allow the proxy to scale
-
 class ReverseProxyServer:
 
     NETBUS_DOMAIN = 'webservices.nextbus.com'
@@ -22,11 +21,11 @@ class ReverseProxyServer:
         self.PORT = port
 
         # number of threads to handle request to the Nextbus
-        self.num_threads = 2
+        self.num_threads = 10
         self.print_lock = threading.Lock()
 
         # feed buffer response
-        self.buffer_size = 8096
+        self.BUFFSIZE = 32384
 
         # store incoming requests
         self.queue = Queue()
@@ -61,48 +60,50 @@ class ReverseProxyServer:
                     conn, addr = self.proxy_socket.accept()
                     print('Connected to : ', addr, ' (client)')
                     self.queue.put(conn)
+                    #conn.shutdown(socket.SHUT_WR)
+                    #conn.close()
+            time.sleep(0.05)
+
+        kqueue.close()
+        self.queue.join()
 
     # Threaded request processing
     # Process the request's from the queue
     # Process the request in a different thread while the main thread is waiting
     # for new requests
     def process_requests(self):
-        response = b'No data to return'
+
         while True:
             conn = self.queue.get()
             request = conn.recv(1024).decode()
 
-            # TODO: check if it's a valid http request (regex)
-            if len(request) > 0:
+            if request and len(request) > 0:
                 # edit the request to use the NextBus domain
                 request = self.format_request(request)
 
-                # check cache first
-                response = self.doRequest(request)
-                if response:
-                    with self.print_lock:
-                        print('Response: \n', response, '\n\n')
-
+                if request is None:
+                    conn.shutdown(socket.SHUT_WR)
+                    conn.close()
                 else:
-                    print('Not able to connect to NextBus')
-                    return
-
+                    self.doRequest(request, conn)
             else:
                 with self.print_lock:
-                    print('Not able to receive client data')
-            conn.sendall(response)
-            self.queue.task_done()
+                    print('Not able to receive client data from client')
+
+                conn.shutdown(socket.SHUT_WR)
+                conn.close()
+
+            time.sleep(0.05)
 
     # request data from the NextBus API
-    def doRequest(self, request):
-        response = ""
-
+    def doRequest(self, request, conn):
         with self.print_lock:
             print('Thread (',threading.current_thread().name,'): ', request)
         info = socket.getaddrinfo(self.NETBUS_DOMAIN, self.NETBUS_PORT, socket.AF_UNSPEC, socket.SOCK_STREAM)
 
         with self.print_lock:
             print('Address info: ', info)
+
         for res in info:
             af, socktype, proto, canonname, sa = res
             with socket.socket(af, socktype, proto) as proxySocket:
@@ -111,23 +112,48 @@ class ReverseProxyServer:
                     print('Server IP: ', server_ip, '\n\n')
 
                     print('Connecting to ', self.NETBUS_DOMAIN, ' on port ', self.NETBUS_PORT)
+                    proxySocket.settimeout(1)
                     proxySocket.connect((self.NETBUS_DOMAIN, self.NETBUS_PORT))
-                    print('Connected to ', self.NETBUS_DOMAIN)
-                    proxySocket.send(request.encode())
-                    response = proxySocket.recv(self.buffer_size)
-                    proxySocket.close()
-                    #size = re.search('^Content-Length: [0-9]+$', result)
-
                 except:
                     print('Port ', self.NETBUS_PORT, ' is closed!')
-                    return
-        return response
+
+                try:
+                    print('Connected to ', self.NETBUS_DOMAIN)
+                    proxySocket.send(request.encode())
+
+                    while True:
+                        data = proxySocket.recv(self.BUFFSIZE)
+
+                        if data and len(data) > 0:
+                            conn.send(data)
+                        else:
+                            conn.shutdown(socket.SHUT_WR)
+                            conn.close()
+                            break
+
+                    proxySocket.close()
+                except Exception as msg:
+                    conn.shutdown(socket.SHUT_WR)
+                    conn.close()
+                    proxySocket.shutdown(socket.SHUT_RD)
+                    proxySocket.close()
 
     def format_request(self, data):
-        request_line, headers = data.split('\r\n', 1)
-        list = request_line.split(' ')
-        http_request = list[0]
-        path = list[1]
-        request = http_request+" " + path + " HTTP/1.1\r\nHost: " + self.NETBUS_DOMAIN + "\r\nAccept-Encoding: gzip, deflate\n\n"
+        request = None
+
+        if len(data) > 0:
+            request_line, headers = data.split('\r\n', 1)
+            list = request_line.split(' ')
+            http_request = list[0]
+            path = list[1]
+            request = http_request+" " + path + " HTTP/1.1\r\nHost: " + self.NETBUS_DOMAIN \
+                      + "\r\nAccept-Encoding: gzip, deflate\n\n"
 
         return request
+
+
+
+if __name__ == '__main__':
+    server = ReverseProxyServer('localhost')
+    server.start()
+
