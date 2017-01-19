@@ -174,8 +174,6 @@ class ReverseProxyServer:
                       + "\r\nAccept-Encoding: gzip, deflate\n\n"
         return request
 
-
-
 if __name__ == '__main__':
     server = ReverseProxyServer('localhost')
     server.start()

@@ -81,7 +81,7 @@ class Stats (threading.Thread):
                 self.slow_requests.update({path:time})
 
     '''
-        Increments the request counter
+        Increments the requests counter
     '''
     def requestCounter(self, path):
         if path in self.queries:
