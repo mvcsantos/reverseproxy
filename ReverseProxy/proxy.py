@@ -2,6 +2,7 @@ import socket
 import threading
 import select
 import time
+from stats import Stats
 
 from queue import Queue
 
@@ -29,6 +30,10 @@ class ReverseProxyServer:
 
         # store incoming requests
         self.queue = Queue()
+
+        # start statistics socket
+        self.stats = Stats('', 9012)
+        self.stats.start()
 
         # initialize threads
         for i in range(self.num_threads):
@@ -85,7 +90,13 @@ class ReverseProxyServer:
                     conn.shutdown(socket.SHUT_WR)
                     conn.close()
                 else:
+                    start = time.time()
                     self.doRequest(request, conn)
+                    request_line, _ = request.split('\r\n', 1)
+                    list = request_line.split(' ')
+                    path = list[1]
+                    self.stats.addStat(time.time()-start, path)
+                    self.stats.requestCounter(path)
             else:
                 with self.print_lock:
                     print('Not able to receive client data from client')
@@ -116,7 +127,6 @@ class ReverseProxyServer:
                     proxySocket.connect((self.NETBUS_DOMAIN, self.NETBUS_PORT))
                 except:
                     print('Port ', self.NETBUS_PORT, ' is closed!')
-
                 try:
                     print('Connected to ', self.NETBUS_DOMAIN)
                     proxySocket.send(request.encode())
