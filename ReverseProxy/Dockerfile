@@ -11,5 +11,7 @@ WORKDIR $INSTALL_FOLDER
 
 COPY main.py $INSTALL_FOLDER/
 COPY proxy.py $INSTALL_FOLDER/
+COPY stats.py $INSTALL_FOLDER/
 EXPOSE 9001
+EXPOSE 9012
 CMD [ "python", "/opt/proxy/main.py"]

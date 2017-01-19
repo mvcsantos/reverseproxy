@@ -3,7 +3,10 @@ import socket
 import json
 import time
 
-# Create the statistics of the client requests
+
+'''
+    Client requests statistics
+'''
 class Stats (threading.Thread):
 
     stats_lock = threading.Lock()
@@ -18,12 +21,14 @@ class Stats (threading.Thread):
 
         self.slow_requests = {}
         self.queries = {}
-        self.threshold = 0.00000001
+        self.threshold = 10.0
 
     def run(self):
         self.startEndpoint()
 
-    # Start
+    '''
+        Start listening for statistics requests
+    '''
     def startEndpoint(self):
         print("init proxy")
         try:
@@ -41,16 +46,18 @@ class Stats (threading.Thread):
 
                 data = conn.recv(self.BUFFSIZE).decode()
                 response = self.processRequest(data)
-                body = "<html><body><h1>"+response+"</body></html>"
                 conn.send("HTTP/1.0 200 OK\r\n".encode())
                 conn.send("Content-Type: application/json\r\n\r\n".encode())
-                conn.send(body.encode())
+                conn.send(response.encode())
                 conn.close()
                 time.sleep(0.05)
 
         except socket.error as socketerror:
             print("Error: ", socketerror)
 
+    '''
+        Check the path and generates the JSON response
+    '''
     def processRequest(self, request):
         request_line, headers = request.split('\r\n', 1)
         list = request_line.split(' ')
@@ -65,11 +72,17 @@ class Stats (threading.Thread):
         else:
             return "Invalid request"
 
+    '''
+        Add new data in Slow requests
+    '''
     def addStat(self, time, path):
         if time > self.threshold:
             with self.stats_lock:
                 self.slow_requests.update({path:time})
 
+    '''
+        Increments the request counter
+    '''
     def requestCounter(self, path):
         if path in self.queries:
             with self.stats_lock:

@@ -6,9 +6,13 @@ from stats import Stats
 
 from queue import Queue
 
-# Notes: python 3.6 socket seems to be synchronous
-# so there is a need to implement multithreading to improve performance
-# and allow the proxy to scale
+'''
+    Reverse proxy implementation using KQueue and multithreading
+    Each request is processed by a different thread (Daemon)
+
+    Note: KQueue is only supported by MacOS and FreeBSD
+
+'''
 class ReverseProxyServer:
 
     NETBUS_DOMAIN = 'webservices.nextbus.com'
@@ -42,6 +46,9 @@ class ReverseProxyServer:
             thread.start()
             self.threads.append(thread)
 
+    '''
+        Starts the proxy to receive connections
+    '''
     def start(self):
         self.proxy_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.proxy_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -72,10 +79,12 @@ class ReverseProxyServer:
         kqueue.close()
         self.queue.join()
 
-    # Threaded request processing
-    # Process the request's from the queue
-    # Process the request in a different thread while the main thread is waiting
-    # for new requests
+    '''
+        Threaded request processing
+        Process the request's from the queue
+        Process the request in a different thread while
+        the main thread is waiting for new requests
+    '''
     def process_requests(self):
 
         while True:
@@ -106,7 +115,9 @@ class ReverseProxyServer:
 
             time.sleep(0.05)
 
-    # request data from the NextBus API
+    '''
+        request data from the NextBus API
+    '''
     def doRequest(self, request, conn):
         with self.print_lock:
             print('Thread (',threading.current_thread().name,'): ', request)
@@ -148,17 +159,19 @@ class ReverseProxyServer:
                     proxySocket.shutdown(socket.SHUT_RD)
                     proxySocket.close()
 
+    '''
+        Create the new request to retrieve data from NextBus
+    '''
     def format_request(self, data):
         request = None
 
         if len(data) > 0:
-            request_line, headers = data.split('\r\n', 1)
+            request_line, _ = data.split('\r\n', 1)
             list = request_line.split(' ')
             http_request = list[0]
             path = list[1]
             request = http_request+" " + path + " HTTP/1.1\r\nHost: " + self.NETBUS_DOMAIN \
                       + "\r\nAccept-Encoding: gzip, deflate\n\n"
-
         return request
 
 
